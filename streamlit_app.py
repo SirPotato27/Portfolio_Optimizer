@@ -1,6 +1,7 @@
 import io
 import math
 import os
+import re
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional, Tuple
 
@@ -93,6 +94,7 @@ def clean_ticker(ticker: str) -> str:
     t = str(ticker).strip().upper()
     aliases = {
         "BRK-B": "BRK/B",
+        "BRK.B": "BRK/B",
         "BRKB": "BRK/B",
         "BRK B": "BRK/B",
         "^GSPC": "SPX",
@@ -126,6 +128,30 @@ def clean_ticker(ticker: str) -> str:
         "LOCKHEED MARTIN": "LMT",
     }
     return aliases.get(t, t)
+
+
+def parse_ticker_text(text: str) -> List[str]:
+    """Convierte texto libre en tickers limpios, preservando orden y eliminando duplicados."""
+    if not text:
+        return []
+    raw = re.split(r"[,;\n\t\r ]+", str(text).strip())
+    tickers: List[str] = []
+    seen = set()
+    for token in raw:
+        token = token.strip()
+        if not token:
+            continue
+        ticker = clean_ticker(token)
+        if ticker and ticker not in seen:
+            tickers.append(ticker)
+            seen.add(ticker)
+    return tickers
+
+
+def yahoo_symbol(ticker: str) -> str:
+    """Convierte el ticker interno al símbolo usado por Yahoo Finance."""
+    t = clean_ticker(ticker)
+    return YAHOO_MAP.get(t, t.replace("/", "-"))
 
 
 def percent_style(df: pd.DataFrame, columns: Iterable[str], decimals: int = 2):
@@ -162,8 +188,18 @@ def fetch_yahoo_prices(asset_tickers: Tuple[str, ...], start: str, end: str, mar
     if yf is None:
         raise RuntimeError("yfinance no está instalado. Use el archivo incluido o suba un Excel/CSV.")
 
-    tickers = list(asset_tickers) + [market_ticker]
-    yahoo_symbols = [YAHOO_MAP.get(t, t.replace("/", "-")) for t in tickers]
+    assets_clean = []
+    seen = set()
+    for ticker in asset_tickers:
+        t = clean_ticker(ticker)
+        if t and t not in seen:
+            assets_clean.append(t)
+            seen.add(t)
+
+    market_clean = clean_ticker(market_ticker)
+    tickers = assets_clean + ([] if market_clean in seen else [market_clean])
+    yahoo_symbols = [yahoo_symbol(t) for t in tickers]
+    symbol_to_internal = {yahoo_symbol(t): t for t in tickers}
     end_dt = pd.to_datetime(end) + pd.DateOffset(days=5)
 
     raw = yf.download(
@@ -178,7 +214,7 @@ def fetch_yahoo_prices(asset_tickers: Tuple[str, ...], start: str, end: str, mar
     )
 
     if raw.empty:
-        raise RuntimeError("Yahoo Finance no retornó datos. Use la opción de archivo incluido o suba un Excel/CSV.")
+        raise RuntimeError("Yahoo Finance no retornó datos. Revise que los símbolos existan en Yahoo o use archivo incluido/subida manual.")
 
     if isinstance(raw.columns, pd.MultiIndex):
         if "Close" not in raw.columns.get_level_values(0):
@@ -188,10 +224,11 @@ def fetch_yahoo_prices(asset_tickers: Tuple[str, ...], start: str, end: str, mar
         close = raw[["Close"]].copy()
         close.columns = [yahoo_symbols[0]]
 
-    close = close.rename(columns={sym: REVERSE_YAHOO_MAP.get(sym, sym) for sym in close.columns})
+    close = close.rename(columns={sym: symbol_to_internal.get(sym, REVERSE_YAHOO_MAP.get(sym, sym)) for sym in close.columns})
     close.index = pd.to_datetime(close.index)
     close = close.sort_index()
-    close = close[[c for c in tickers if c in close.columns]]
+    ordered_cols = [c for c in tickers if c in close.columns]
+    close = close[ordered_cols]
     close = close.dropna(axis=1, how="all").dropna(how="all")
     return close
 
@@ -649,7 +686,7 @@ st.markdown(
 )
 
 st.title("Portafolio óptimo: Minimum-Variance Portfolio")
-st.caption("Aplicación interactiva para replicar el trabajo final: 20 activos long-only, CAPM, matriz de correlación, mínima varianza, máxima Sharpe, frontera eficiente y VaR5%.")
+st.caption("Aplicación interactiva para replicar el trabajo final: portafolio long-only, CAPM, matriz de correlación, mínima varianza, máxima Sharpe, frontera eficiente y VaR5%. En modo Yahoo puede analizar cualquier símbolo válido de Yahoo Finance.")
 
 with st.sidebar:
     st.header("Configuración")
@@ -660,11 +697,34 @@ with st.sidebar:
         help="Use los datos incluidos para una demo estable. Yahoo permite refrescar datos, pero depende de la disponibilidad de la API.",
     )
 
-    selected_assets = st.multiselect(
-        "Activos del portafolio",
-        DEFAULT_ASSETS,
-        default=DEFAULT_ASSETS,
-    )
+    market_ticker = MARKET_TICKER
+    if data_source == "Datos incluidos 61 meses":
+        selected_assets = st.multiselect(
+            "Activos del portafolio",
+            DEFAULT_ASSETS,
+            default=DEFAULT_ASSETS,
+            help="Para la demo incluida se usan los 20 activos originales del trabajo.",
+        )
+    else:
+        default_text = ", ".join(DEFAULT_ASSETS)
+        tickers_text = st.text_area(
+            "Activos del portafolio",
+            value=default_text if data_source == "Yahoo Finance API" else "",
+            height=120,
+            help=(
+                "Escriba cualquier símbolo válido de Yahoo Finance separado por comas, espacios o saltos de línea. "
+                "Ejemplos: AAPL, MSFT, TSLA, META, AMD, SPY, QQQ, BRK-B, ^IXIC. "
+                "Para acciones internacionales use el sufijo de Yahoo, por ejemplo 7203.T o ASML.AS."
+            ),
+        )
+        selected_assets = parse_ticker_text(tickers_text)
+        benchmark_text = st.text_input(
+            "Benchmark para CAPM / beta",
+            value="^GSPC",
+            help="Símbolo Yahoo del índice de mercado. Para acciones de EE. UU. use ^GSPC. En el modelo se mostrará como SPX.",
+        )
+        market_ticker = clean_ticker(benchmark_text)
+        selected_assets = [a for a in selected_assets if a != market_ticker]
 
     col_a, col_b = st.columns(2)
     with col_a:
@@ -684,33 +744,44 @@ with st.sidebar:
     uploaded_prices = None
     if data_source == "Subir Excel/CSV":
         uploaded_prices = st.file_uploader("Archivo de precios", type=["xlsx", "xls", "csv"])
-        st.caption("Formato recomendado: primera columna Date/Fecha y una columna por activo. También acepta el formato de pares Fecha-Precio exportado de Bloomberg.")
+        st.caption("Formato recomendado: primera columna Date/Fecha y una columna por activo. Si deja el campo de activos vacío, la app usará todas las columnas numéricas excepto el benchmark.")
 
     use_anr = st.toggle("Usar ANR incluido como tercera estimación", value=True)
 
-if len(selected_assets) < 2:
-    st.error("Seleccione al menos dos activos.")
+allow_auto_assets = data_source == "Subir Excel/CSV" and len(selected_assets) == 0
+if not allow_auto_assets and len(selected_assets) < 2:
+    st.error("Seleccione o escriba al menos dos activos.")
     st.stop()
 
 # Carga de precios
 try:
     if data_source == "Datos incluidos 61 meses":
         prices_raw = load_sample_prices()
+        market_ticker = MARKET_TICKER
         data_label = "datos incluidos / Bloomberg PX_LAST mensual 30/04/2021-30/04/2026"
     elif data_source == "Yahoo Finance API":
-        prices_raw = fetch_yahoo_prices(tuple(selected_assets), str(start_date), str(end_date), MARKET_TICKER)
-        data_label = "Yahoo Finance API / Close mensual"
+        prices_raw = fetch_yahoo_prices(tuple(selected_assets), str(start_date), str(end_date), market_ticker)
+        data_label = f"Yahoo Finance API / Close mensual / benchmark {market_ticker}"
     else:
         if uploaded_prices is None:
             st.info("Suba un archivo Excel/CSV para continuar.")
             st.stop()
         prices_raw = parse_uploaded_prices(uploaded_prices)
+        prices_raw.columns = [clean_ticker(c) for c in prices_raw.columns]
+        if allow_auto_assets:
+            selected_assets = [c for c in prices_raw.columns if c != market_ticker]
         data_label = f"archivo cargado: {uploaded_prices.name}"
 
-    prices = align_price_data(prices_raw, selected_assets, MARKET_TICKER)
+    if market_ticker in selected_assets:
+        selected_assets = [a for a in selected_assets if a != market_ticker]
+        st.warning(f"El benchmark {market_ticker} se usa para beta/CAPM y fue removido de los activos invertibles.")
+
+    prices = align_price_data(prices_raw, selected_assets, market_ticker)
     assets = [a for a in selected_assets if a in prices.columns]
+    if len(assets) < 2:
+        raise ValueError("Después de alinear datos quedaron menos de dos activos válidos.")
     anr_df = load_sample_anr() if use_anr else pd.DataFrame()
-    calc = calculate_inputs(prices, assets, MARKET_TICKER, rf_ea, erp_usa, anr_df)
+    calc = calculate_inputs(prices, assets, market_ticker, rf_ea, erp_usa, anr_df)
     summary, weights_df, weights_dict, frontier, var_constraints = calculate_all_portfolios(calc, rf_ea, z_value)
 except Exception as exc:
     st.error(f"No se pudo ejecutar el modelo: {exc}")
