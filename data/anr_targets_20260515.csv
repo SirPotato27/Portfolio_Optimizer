@@ -1,0 +1,21 @@
+Ticker,Company,Sector,TargetPrice12M,LastPriceANR,ANR_Log_Return_Annual,BuyPctANR
+AAPL,Apple Inc.,Technology / Hardware & Services,312.95,300.23,0.04149458578660806,0.649
+MSFT,Microsoft Corp.,Technology / Software & Cloud,561.1,421.92,0.2850834201519497,0.944
+NVDA,NVIDIA Corp.,Technology / Semiconductors & AI,273.84,225.32,0.19502238019541657,0.95
+AVGO,Broadcom Inc.,Technology / Semiconductors & Infrastructure,478.66,425.19,0.11845440541954494,0.949
+GOOGL,Alphabet Inc.,Communication Services / Digital Ads & Cloud,429.2,396.78,0.07854103984191751,0.893
+AMZN,Amazon.com Inc.,Consumer Discretionary / Cloud & E-commerce,312.88,264.14,0.16934046483160037,0.952
+PANW,Palo Alto Networks Inc.,Technology / Cybersecurity,211.91,242.83,-0.13619995380449712,0.79
+LLY,Eli Lilly & Co.,Health Care / Pharma,1223.0,1004.92,0.19639892035245266,0.861
+JNJ,Johnson & Johnson,Health Care / Defensive Pharma,260.89,226.71,0.14042719484574195,0.655
+UNH,UnitedHealth Group Inc.,Health Care / Managed Care,392.51,393.85,-0.0034081115444152058,0.742
+JPM,JPMorgan Chase & Co.,Financials / Banking,343.13,297.81,0.14165368483688326,0.529
+BRK/B,Berkshire Hathaway Inc. Class B,Financials / Diversified Holding,521.2,482.7,0.07673850258424303,0.4
+V,Visa Inc.,Financials / Payments,402.83,325.75,0.21238442071550961,0.957
+XOM,Exxon Mobil Corp.,Energy,168.22,157.92,0.06318407084911984,0.484
+NEE,NextEra Energy Inc.,Utilities / Renewable Power,100.14,93.36,0.07010621892349808,0.692
+ETN,Eaton Corp. PLC,Industrials / Electrification,460.14,399.44,0.14146722481246907,0.781
+PG,Procter & Gamble Co.,Consumer Staples,163.46,141.57,0.14377401768157785,0.593
+WMT,Walmart Inc.,Consumer Staples / Retail,140.38,131.45,0.06572648012638532,0.92
+KO,Coca-Cola Co.,Consumer Staples / Beverages,86.92,80.82,0.07276369573790128,0.815
+LMT,Lockheed Martin Corp.,Industrials / Defense,635.95,516.01,0.20899379875875632,0.37
